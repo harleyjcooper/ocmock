@@ -22,6 +22,21 @@
 
 @implementation NSInvocation(OCMAdditions)
 
+- (BOOL)argumentAtIndexIsObject:(int)argIndex
+{
+    if (argIndex >= self.methodSignature.numberOfArguments) {
+        [NSException raise:NSInvalidArgumentException format:@"Called with an argument index beyond the bounds of the number of arguments on the receiver."];
+    }
+
+    const char *argType = OCMTypeWithoutQualifiers([[self methodSignature] getArgumentTypeAtIndex:argIndex]);
+
+    if((strlen(argType) > 1) && (strchr("{^", argType[0]) == NULL) && (strcmp("@?", argType) != 0)) {
+        [NSException raise:NSInvalidArgumentException format:@"Cannot handle argument type '%s'.", argType];
+    }
+
+    return argType[0] == '@' || argType[0] == '#';
+}
+
 + (NSInvocation *)invocationForBlock:(id)block withArguments:(NSArray *)arguments
 {
 	NSMethodSignature *sig = [NSMethodSignature signatureForBlock:block];

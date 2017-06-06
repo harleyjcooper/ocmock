@@ -24,6 +24,8 @@
 
 - (id)getArgumentAtIndexAsObject:(NSInteger)argIndex;
 
+- (BOOL)argumentAtIndexIsObject:(int)argIndex;
+
 - (NSString *)invocationDescription;
 
 - (NSString *)argumentDescriptionAtIndex:(NSInteger)argIndex;

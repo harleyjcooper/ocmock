@@ -34,8 +34,7 @@
 
 
 @implementation NSInvocationOCMAdditionsTests
-
-- (void)testInvocationDescriptionWithNoArguments
+- (void)testInvocationWithNoArguments
 {
 	SEL selector = @selector(lowercaseString);
 	NSMethodSignature *signature = [NSString instanceMethodSignatureForSelector:selector];
@@ -43,9 +42,18 @@
 	[invocation setSelector:selector];
 	
 	XCTAssertEqualObjects(@"lowercaseString", [invocation invocationDescription], @"");
+
+    // self
+    XCTAssertTrue([invocation argumentAtIndexIsObject:0]);
+
+    // _cmd
+    XCTAssertFalse([invocation argumentAtIndexIsObject:1]);
+
+    // Out of bounds
+    XCTAssertThrows([invocation argumentAtIndexIsObject:2]);
 }
 
-- (void)testInvocationDescriptionWithObjectArgument
+- (void)testInvocationWithObjectArgument
 {
 	SEL selector = @selector(isEqualToNumber:);
 	NSMethodSignature *signature = [NSNumber instanceMethodSignatureForSelector:selector];
@@ -57,9 +65,21 @@
 	
 	NSString *expected = [NSString stringWithFormat:@"isEqualToNumber:%d", 1];
 	XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
+
+    // self
+    XCTAssertTrue([invocation argumentAtIndexIsObject:0]);
+
+    // _cmd
+    XCTAssertFalse([invocation argumentAtIndexIsObject:1]);
+
+    // NSNumber
+    XCTAssertTrue([invocation argumentAtIndexIsObject:2]);
+
+    // Out of bounds
+    XCTAssertThrows([invocation argumentAtIndexIsObject:3]);
 }
 
-- (void)testInvocationDescriptionWithNSStringArgument
+- (void)testInvocationWithNSStringArgument
 {
 	SEL selector = @selector(isEqualToString:);
 	NSMethodSignature *signature = [NSString instanceMethodSignatureForSelector:selector];
@@ -71,9 +91,21 @@
 	
 	NSString *expected = [NSString stringWithFormat:@"isEqualToString:@\"%@\"", @"TEST_STRING"];
 	XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
+
+    // self
+    XCTAssertTrue([invocation argumentAtIndexIsObject:0]);
+
+    // _cmd
+    XCTAssertFalse([invocation argumentAtIndexIsObject:1]);
+
+    // NSString
+    XCTAssertTrue([invocation argumentAtIndexIsObject:2]);
+
+    // Out of bounds
+    XCTAssertThrows([invocation argumentAtIndexIsObject:3]);
 }
 
-- (void)testInvocationDescriptionWithObjectArguments
+- (void)testInvocationWithObjectArguments
 {
 	SEL selector = @selector(setValue:forKey:);
 	NSMethodSignature *signature = [NSArray instanceMethodSignatureForSelector:selector];
@@ -87,6 +119,47 @@
 	
 	NSString *expected = [NSString stringWithFormat:@"setValue:%d forKey:@\"%@\"", 1, @"TEST_STRING"];
 	XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
+
+    // self
+    XCTAssertTrue([invocation argumentAtIndexIsObject:0]);
+
+    // _cmd
+    XCTAssertFalse([invocation argumentAtIndexIsObject:1]);
+
+    // NSNumber
+    XCTAssertTrue([invocation argumentAtIndexIsObject:2]);
+
+    // NSString
+    XCTAssertTrue([invocation argumentAtIndexIsObject:3]);
+
+    // Out of bounds
+    XCTAssertThrows([invocation argumentAtIndexIsObject:4]);
+}
+
+- (void)testInvocationWithIntArgument
+{
+    SEL selector = @selector(initWithInt:);
+    NSMethodSignature *signature = [NSNumber instanceMethodSignatureForSelector:selector];
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    [invocation setSelector:selector];
+    // Give it an argument
+    int argumentOne = 1;
+    [invocation setArgument:&argumentOne atIndex:2];
+
+    NSString *expected = [NSString stringWithFormat:@"initWithInt:%d", 1];
+    XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
+
+    // self
+    XCTAssertTrue([invocation argumentAtIndexIsObject:0]);
+
+    // _cmd
+    XCTAssertFalse([invocation argumentAtIndexIsObject:1]);
+
+    // int
+    XCTAssertFalse([invocation argumentAtIndexIsObject:2]);
+
+    // Out of bounds
+    XCTAssertThrows([invocation argumentAtIndexIsObject:3]);
 }
 
 - (void)testInvocationDescriptionWithArrayArgument
@@ -103,19 +176,6 @@
 	XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
 }
 
-- (void)testInvocationDescriptionWithIntArgument
-{
-	SEL selector = @selector(initWithInt:);
-	NSMethodSignature *signature = [NSNumber instanceMethodSignatureForSelector:selector];
-	NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-	[invocation setSelector:selector];
-	// Give it an argument
-	int argumentOne = 1;
-	[invocation setArgument:&argumentOne atIndex:2];
-	
-	NSString *expected = [NSString stringWithFormat:@"initWithInt:%d", 1];
-	XCTAssertEqualObjects(expected, [invocation invocationDescription], @"");
-}
 
 - (void)testInvocationDescriptionWithUnsignedIntArgument
 {

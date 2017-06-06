@@ -21,6 +21,7 @@
 #import "OCObserverMockObject.h"
 #import "OCMStubRecorder.h"
 #import <OCMock/OCMLocation.h>
+#import <Foundation/Foundation.h>
 #import "NSInvocation+OCMAdditions.h"
 #import "OCMInvocationMatcher.h"
 #import "OCMMacroState.h"
@@ -110,7 +111,14 @@
 	[stubs release];
 	[expectations release];
 	[exceptions release];
+
+    for (NSInvocation *invocation in invocations) {
+        [self _enumerateObjectArgumentsOfInvocation:invocation usingBlock:^(id object, NSUInteger index) {
+            [object release];
+        }];
+    }
     [invocations release];
+    invocations = nil;
 	[super dealloc];
 }
 
@@ -320,6 +328,27 @@
 
 - (BOOL)handleInvocation:(NSInvocation *)anInvocation
 {
+    // [NSInvocation retainArguments] should work here, except it
+    // also retains the target of the invocation (which is ourselves).
+    // Because we retain the invocation, this results in a retain cycle.
+    // Only retain the arguments here.
+    [self _enumerateObjectArgumentsOfInvocation:anInvocation usingBlock:^(id object, NSUInteger index) {
+        // If this object is a block that was allocated on the stack it is not safe to hold onto, even if
+        // we retain. In this case we'll make a copy of the block to store instead.
+        if ([object isKindOfClass:
+            NSClassFromString(@"__NSStackBlock__")] ) {
+            id safeBlock = [object copy];
+            [anInvocation setArgument:&safeBlock atIndex:index];
+            [object release];
+
+            // Get a reference to the new non-stack block argument, so that we can retain
+            // this, like the others.
+            [anInvocation getArgument:&object atIndex:index];
+        }
+
+        [object retain];
+    }];
+
     @synchronized(invocations)
     {
         // We can't do a normal retain arguments on anInvocation because its target/arguments/return
@@ -450,5 +479,24 @@
 	return outputString;
 }
 
+
+typedef void (^OCMockInvocationObjectArgumentBlock)(id object, NSUInteger index);
+
+- (void)_enumerateObjectArgumentsOfInvocation:(NSInvocation *)anInvocation usingBlock:(OCMockInvocationObjectArgumentBlock)block {
+
+    NSUInteger numberOfArguments = anInvocation.methodSignature.numberOfArguments;
+
+    // Self and _cmd are the first two arguments, which we don't care about.
+    // Start at 2.
+    for (NSUInteger i = 2; i < numberOfArguments; i++) {
+        if (![anInvocation argumentAtIndexIsObject:i]) {
+            continue;
+        }
+
+        id argument;
+        [anInvocation getArgument:&argument atIndex:i];
+        block(argument, i);
+    }
+}
 
 @end

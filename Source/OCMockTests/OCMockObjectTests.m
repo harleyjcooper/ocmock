@@ -148,7 +148,8 @@ TestOpaque myOpaque;
 @end
 
 
-static NSString *TestNotification = @"TestNotification";
+
+@class TestClassWhichNotifiesTestCaseOfDealloc;
 
 
 @interface OCMockObjectTests : XCTestCase
@@ -156,21 +157,53 @@ static NSString *TestNotification = @"TestNotification";
 	id mock;
 }
 
+@property(nonatomic, retain) NSMutableSet *deallocatedTestObjectPointers;
+
+- (void)testObjectInstanceWillDealloc:(TestClassWhichNotifiesTestCaseOfDealloc *)testObject;
+
 @end
 
+
+@interface TestClassWhichNotifiesTestCaseOfDealloc : NSObject
+
+- (instancetype)initWithTestCase:(OCMockObjectTests *)testCase;
+
+- (void)someMethodTakingAnArgument:(NSObject *)anArgument;
+
+@end
+
+
+@interface TestClassWithBlockMethod : NSObject
+
+- (void)someMethodTakingABlock:(void (^)(void))block;
+
+@end
+
+
+static NSString *TestNotification = @"TestNotification";
+
+
+@implementation OCMockObjectTests
 
 // --------------------------------------------------------------------------------------
 //  setup
 // --------------------------------------------------------------------------------------
 
-
-@implementation OCMockObjectTests
-
 - (void)setUp
 {
+    [super setUp];
+
 	mock = [OCMockObject mockForClass:[NSString class]];
+
+    self.deallocatedTestObjectPointers = [[NSMutableSet alloc] init];
 }
 
+- (void)tearDown;
+{
+    self.deallocatedTestObjectPointers = nil;
+
+    [super tearDown];
+}
 
 // --------------------------------------------------------------------------------------
 //	accepting stubbed methods / rejecting methods not stubbed
@@ -1089,6 +1122,111 @@ static NSString *TestNotification = @"TestNotification";
     XCTAssertTrue([end timeIntervalSinceDate:start] < 3, @"Should have returned before delay was up");
 }
 
+- (void)testMockObjectShouldRetainArgumentsOfInvocation;
+{
+    TestClassWhichNotifiesTestCaseOfDealloc *anotherObject = [[TestClassWhichNotifiesTestCaseOfDealloc alloc] initWithTestCase:self];
+
+    @autoreleasepool {
+        mock = [OCMockObject niceMockForClass:[TestClassWhichNotifiesTestCaseOfDealloc class]];
+
+        // The NSInvocation created by the runtime here will be held onto by the mock.
+        [mock someMethodTakingAnArgument:anotherObject];
+
+        anotherObject = nil;
+
+        // anotherObject should not yet be deallocated, as it should be retained by the mock alongside
+        // the NSInvocation from calling someMethodTakingAnArgument:
+        XCTAssertFalse([self testObjectDeallocated:anotherObject]);
+    }
+
+    // Mock should be deallocated and so should anotherObject.
+    XCTAssertTrue([self testObjectDeallocated:anotherObject]);
+}
+
+- (void)testMockObjectShouldCopyStackBlocksPassedAsArgumentOfInvocation;
+{
+    @autoreleasepool {
+        // Perform this test in a different function call, such that the stack
+        // that the __NSStackBlock__ we're going to pass to the mock will be torn down
+        // before the mock is deallocated.
+        [self _doTestMockObjectShouldCopyStackBlocksPassedAsArgumentOfInvocation];
+    }
+
+    // Mock will now be deallocated. If OCMockObject has held onto the __NSStackBlock__ argument and called
+    // release on it as part of dealloc, we will have crashed by this point.
+    // If we've gotten here without crashing, this test has passed.
+}
+
+- (void)_doTestMockObjectShouldCopyStackBlocksPassedAsArgumentOfInvocation;
+{
+    mock = [OCMockObject niceMockForClass:[TestClassWithBlockMethod class]];
+
+    // The NSInvocation created by the runtime in response to this method call will
+    // be held onto by the mock. This invocation will include an __NSStackBlock__.
+    id anObject = [[NSObject alloc] init];
+
+    [mock someMethodTakingABlock:^{
+        // A block that references any variable from the surrounding scope will be
+        // instantiated as an NSStackBlock.
+        [anObject description];
+    }];
+}
+
+#pragma mark - Test Helpers
+
+- (BOOL)testObjectDeallocated:(TestClassWhichNotifiesTestCaseOfDealloc *)testObject;
+{
+    return [self.deallocatedTestObjectPointers containsObject:[NSValue valueWithPointer:CFBridgingRetain(testObject)]];
+}
+
+- (void)testObjectInstanceWillDealloc:(TestClassWhichNotifiesTestCaseOfDealloc *)testObject
+{
+    [self.deallocatedTestObjectPointers addObject:[NSValue valueWithPointer:CFBridgingRetain(testObject)]];
+}
+
 @end
 
 
+@interface TestClassWhichNotifiesTestCaseOfDealloc ()
+
+@property (nonatomic, strong, readonly) OCMockObjectTests *testCase;
+
+@end
+
+
+@implementation TestClassWhichNotifiesTestCaseOfDealloc
+
+- (instancetype)initWithTestCase:(OCMockObjectTests *)testCase
+{
+    self = [super init];
+    if (!self) {
+        return nil;
+    }
+
+    _testCase = testCase;
+
+    return self;
+}
+
+- (void)someMethodTakingAnArgument:(NSObject *)anArgument;
+{
+    // This method exists only so that it can be mocked.
+}
+
+- (void)dealloc
+{
+    [_testCase testObjectInstanceWillDealloc:self];
+    _testCase = nil;
+}
+
+@end
+
+
+@implementation TestClassWithBlockMethod
+
+- (void)someMethodTakingABlock:(void (^)(void))block;
+{
+    // This method exists only so that it can be mocked.
+}
+
+@end
